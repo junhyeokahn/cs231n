@@ -102,3 +102,12 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+tags
+
+*.swp
+*.pyc
+.env/*
+*.ipynb_checkpoints/*
+
+# gitignore the built release.
+assignment3/*
