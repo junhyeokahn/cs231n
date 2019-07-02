@@ -32,8 +32,26 @@ def softmax_loss_naive(W, X, y, reg):
     # regularization!                                                           #
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    
+    num_data = X.shape[0]
+    num_class = W.shape[1]
+    
+    for data_id in range(num_data):
+        score = X[data_id].dot(W)
+        score -= np.max(score)        
+        softmax = np.exp(score)/np.sum(np.exp(score))
+        loss += -np.log(softmax[y[data_id]])
+        
+        for class_id in range(num_class):
+            if class_id == y[data_id]:
+                dW[:,class_id] +=  -X[data_id] + softmax[class_id]*X[data_id]
+            else:
+                dW[:,class_id] += softmax[class_id]*X[data_id]
+    
+    loss /= num_data
+    dW /= num_data
+    loss += 0.5*reg*np.sum(W*W)
+    dW += reg * W
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -58,7 +76,20 @@ def softmax_loss_vectorized(W, X, y, reg):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    num_data = X.shape[0]
+    num_pixel = X.shape[1]
+    num_class = W.shape[1]
+    
+    scores = X.dot(W)
+    scores -= np.expand_dims(np.max(scores, axis=1), axis=1)
+    softmax = np.exp(scores) / np.expand_dims(np.sum(np.exp(scores), axis=1), axis=1)
+    
+    loss = np.sum(-np.log(softmax[range(num_data), list(y)])) / num_data
+    loss += 0.5*reg*np.sum(W*W)
+    
+    coef = np.copy(softmax)
+    coef[range(num_data), list(y)] -= 1.
+    dW = (X.T).dot(coef) / num_data + reg*W
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 

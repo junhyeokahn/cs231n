@@ -70,6 +70,7 @@ class TwoLayerNet(object):
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
         N, D = X.shape
+        C = b2.shape[0]
 
         # Compute the forward pass
         scores = None
@@ -79,8 +80,9 @@ class TwoLayerNet(object):
         # shape (N, C).                                                             #
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        
+        output_1 = np.maximum(X.dot(W1) + b1, 0)
+        scores = output_1.dot(W2) + b2
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -98,7 +100,16 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        ## Working on this!! ##
+        scores -= np.expand_dims(np.max(scores, axis=1), axis=1)
+        output_2 = np.exp(scores) / np.expand_dims(np.sum(np.exp(scores), axis=1), axis=1)
+        loss = np.mean(-np.log(output_2[range(N), list(y)]))
+        loss += 0.5 * reg * (np.sum(W1*W1) + np.sum(W2*W2))
+        
+        coef = np.copy(output_2)
+        coef[range(N), list(y)] -= 1.
+        dW2 = (output_1.T).dot(coef) / N + reg*W2
+        db2 = np.sum(coef, axis=0) / N        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
