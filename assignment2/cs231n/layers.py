@@ -204,7 +204,18 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        sample_mean = np.mean(x, axis=0) #(D, )
+        sample_var = np.var(x, axis=0) #(D, )
+        vpe = sample_var + eps #(D, )
+        num = x - sample_mean #(N, D)
+        den = 1 / np.sqrt(vpe) #(D, )
+        x_hat =  num * den #(N, D)
+        out = gamma * x_hat + beta #(N, D)
+        
+        running_mean = momentum * running_mean + (1-momentum) * sample_mean
+        running_var = momentum * running_var + (1-momentum) * sample_var
+        
+        cache = (x, sample_mean, sample_var, vpe, num, den, x_hat, gamma, beta)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -219,7 +230,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        out = gamma*((x-running_mean)/ np.sqrt(running_var+eps)) + beta
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -261,7 +272,21 @@ def batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, D = dout.shape[0], dout.shape[1]
+    (x, sample_mean, sample_var, vpe, num, den, x_hat, gamma, beta) = cache
+    
+    dbeta = np.sum(dout, axis=0) #(D, )
+    dgamma = np.sum(x_hat*dout, axis=0) #(D, )
+    dx_hat = gamma*dout #(N, D)
+    dnum = den*dx_hat #(N, D)
+    dden = np.sum(num*dx_hat, axis=0) #(D, )
+    dmean = np.sum(-1*dnum, axis=0) # (D, )
+    dx1 = dnum #(N, D)
+    dx2 = np.concatenate([np.expand_dims(dmean, axis=0)]*N, axis=0) / N #(N, D)
+    dvpe = dden * (-0.5) * (vpe**(-1.5)) #(D, )
+    dvar = dvpe #(D, )
+    dx3 = (2/N) * dvar * (x - sample_mean) #(N, D)
+    dx = dx1 + dx2 + dx3
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -342,7 +367,15 @@ def layernorm_forward(x, gamma, beta, ln_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    sample_mean = np.mean(x, axis=1) #(N, )
+    sample_var = np.var(x, axis=1) #(N, )
+    vpe = sample_var + eps #(N, )
+    num = x - np.expand_dims(sample_mean, axis=1) #(N, D)
+    den = 1 / np.sqrt(vpe) #(N, )
+    x_hat =  num * np.expand_dims(den, axis=1) #(N, D)
+    out = gamma * x_hat + beta #(N, D)
+
+    cache = (x, sample_mean, sample_var, vpe, num, den, x_hat, gamma, beta)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -377,7 +410,21 @@ def layernorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, D = dout.shape[0], dout.shape[1]
+    (x, sample_mean, sample_var, vpe, num, den, x_hat, gamma, beta) = cache
+    
+    dbeta = np.sum(dout, axis=0) #(D, )
+    dgamma = np.sum(x_hat*dout, axis=0) #(D, )
+    dx_hat = gamma*dout #(N, D)
+    dnum = np.expand_dims(den, axis=1)*dx_hat #(N, D)
+    dden = np.sum(num*dx_hat, axis=1) #(N, )
+    dmean = np.sum(-1*dnum, axis=1) # (N, )
+    dx1 = dnum #(N, D)
+    dx2 = (np.concatenate([np.expand_dims(dmean, axis=0)]*D, axis=0) / D).T #(N, D)
+    dvpe = dden * (-0.5) * (vpe**(-1.5)) #(N, )
+    dvar = dvpe #(N, )
+    dx3 = (2/D) * np.expand_dims(dvar, axis=1) * (x - np.expand_dims(sample_mean, axis=1)) #(N, D)
+    dx = dx1 + dx2 + dx3
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -426,7 +473,8 @@ def dropout_forward(x, dropout_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        mask = (np.random.rand(*x.shape) < p )/ p
+        out = x * mask
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -438,7 +486,7 @@ def dropout_forward(x, dropout_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        out = x
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -469,7 +517,7 @@ def dropout_backward(dout, cache):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        dx = mask * dout
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -515,8 +563,23 @@ def conv_forward_naive(x, w, b, conv_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
-
+    N, C, H, W = x.shape
+    F, C, HH, WW = w.shape
+    stride, pad = conv_param['stride'], conv_param['pad']
+    H_ = int((H+2*pad-HH)/stride + 1)
+    W_ = int((W+2*pad-WW)/stride + 1)
+    out = np.zeros((N, F, H_, W_))
+    
+    x_padded = np.pad(x, ((0,), (0,), (pad,), (pad,)), mode='constant', constant_values=0)
+    
+    for h_id in range(H_):
+        for w_id in range(W_):
+            x_convolve = x_padded[:, :, h_id*stride:HH+h_id*stride, w_id*stride:WW+w_id*stride] #(N, C, HH, WW)
+            for f_id in range(F):
+                filt_weight = w[f_id] #(C, HH, WW)
+                filt_bias = b[f_id] # (1,)
+                out[:, f_id, h_id, w_id] = np.sum(filt_weight * x_convolve, axis=(1,2,3)) + filt_bias #(N, )
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -544,7 +607,25 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, w, b, conv_param = cache
+    N, C, H, W = x.shape
+    F, C, HH, WW = w.shape
+    H_ = int((H+2*pad-HH)/stride + 1)
+    W_ = int((W+2*pad-WW)/stride + 1)
+    
+    dx = np.zeros_like(x) #(N, C, H, W)
+    dw = np.zeros_like(w) #(F, C, HH, WW)
+    db = np.zeros_like(b) #(F,)
+    
+    x_padded = np.pad(x, ((0,), (0,), (pad,), (pad,)), mode='constant', constant_values=0)
+    dx_padded = np.zeros_like(x_padded)
+    
+    for data_id in range(N):
+        for h_id in range(H_):
+            for w_id in range(W_):
+                for f_id in range(F):
+                    for c_id in range(C):
+                        
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
