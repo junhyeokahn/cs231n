@@ -606,8 +606,12 @@ def conv_backward_naive(dout, cache):
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
+    
+    ## Implementation of https://medium.com/@mayank.utexas/backpropagation-for-convolution-with-strides-8137e4fc2710 ##
+    
     x, w, b, conv_param = cache
+    stride, pad = conv_param['stride'], conv_param['pad']
+    w_flipped = np.flip(w, axis=(2,3)) #(F, C, HH, WW)
     N, C, H, W = x.shape
     F, C, HH, WW = w.shape
     H_ = int((H+2*pad-HH)/stride + 1)
@@ -617,16 +621,30 @@ def conv_backward_naive(dout, cache):
     dw = np.zeros_like(w) #(F, C, HH, WW)
     db = np.zeros_like(b) #(F,)
     
-    x_padded = np.pad(x, ((0,), (0,), (pad,), (pad,)), mode='constant', constant_values=0)
-    dx_padded = np.zeros_like(x_padded)
-    
-    for data_id in range(N):
-        for h_id in range(H_):
-            for w_id in range(W_):
-                for f_id in range(F):
-                    for c_id in range(C):
-                        
+    x_padded = np.pad(x, ((0,), (0,), (pad,), (pad,)), mode='constant', constant_values=0) #(N, C, H+2p, W+2p)
+    dx_padded = np.zeros_like(x_padded) # (N, C, H+2*pad, W+2*pad)
+    dout_padded_dilated = np.zeros(shape=(N, F, H_+2*(HH-1)+(stride-1)*(H_-1), W_+2*(WW-1)+(stride-1)*(W_-1))) # (N, F, H_+2*(HH-1)+(stride-1)*(H_-1), W_+2*(WW-1)+(stride-1)*(W_-1))
+    dout_dilated = np.zeros(shape=(N, F, H_+(stride-1)*(H_-1), W_+(stride-1)*(W_-1))) # (N, F, H_+(stride-1)*(H_-1), W_+(stride-1)*(W_-1))
 
+    dout_padded_dilated[:, :, HH-1:H_+(HH-1)+(stride-1)*(H_-1):stride, WW-1:W_+(WW-1)+(stride-1)*(W_-1):stride] = dout
+    dout_dilated[:, :, ::stride, ::stride] = dout
+
+    for h_id in range(H+2*pad):
+        for w_id in range(W+2*pad):
+            output_convolve = dout_padded_dilated[:, :, h_id:h_id+HH, w_id:w_id+WW] # (N, F, HH, WW)
+            for c_id in range(C):
+                dx_padded[:, c_id, h_id, w_id] = np.sum(output_convolve * w_flipped[:, c_id, :, :], axis=(1, 2, 3))
+
+    for hh_id in range(HH):
+        for ww_id in range(WW):
+            for f_id in range(F):
+                for c_id in range(C):
+                    x_convolve = x_padded[:, c_id, hh_id:(hh_id+H_+(stride-1)*(H_-1)), ww_id:(ww_id+W_+(stride-1)*(W_-1))]
+                    dw[f_id, c_id, hh_id, ww_id] = np.sum(x_convolve*dout_dilated[:, f_id, :, :])
+            
+
+    dx = dx_padded[:, :, pad:-pad, pad:-pad]
+    db = np.sum(dout, axis = (0,2,3))
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -659,8 +677,17 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    h, w, s = pool_param['pool_height'], pool_param['pool_width'], pool_param['stride']
+    N, C, H, W = x.shape
+    H_ = int((H-h)/s + 1)
+    W_ = int((W-w)/s + 1)
+    
+    out = np.zeros(shape=(N, C, H_, W_))
 
+    for h_id in range(H_):
+        for w_id in range(W_):
+            out[:, :, h_id, w_id] = np.max(x[:, :, s*h_id:s*h_id+s, s*w_id:s*w_id+s], axis=(2,3))
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -686,7 +713,23 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, pool_param = cache
+    h, w, s = pool_param['pool_height'], pool_param['pool_width'], pool_param['stride']
+    N, C, H, W = x.shape
+    H_ = int((H-h)/s + 1)
+    W_ = int((W-w)/s + 1)
+    
+    dx = np.zeros_like(x)
+    coef = np.zeros(shape=(N, C, h, w))
+    
+    for h_id in range(H_):
+        for w_id in range(W_):
+            for n_id in range(N):
+                for c_id in range(C):
+                    coef = np.zeros(shape=(N, C, h, w))
+                    max_idx = np.unravel_index(x[n_id, c_id, s*h_id:s*h_id+h, s*w_id:s*w_id+w].argmax(), x[n_id, c_id, s*h_id:s*h_id+h, s*w_id:s*w_id+w].shape)
+                    coef[n_id, c_id, max_idx[0], max_idx[1]] = 1.
+                    dx[n_id, c_id, s*h_id:s*h_id+h, s*w_id:s*w_id+w] += coef[n_id, c_id, :, :]*dout[n_id, c_id, h_id, w_id]
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -728,7 +771,10 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    v_output, v_cache = batchnorm_forward(x.transpose(0, 3, 2, 1).reshape((N*W*H, C)), gamma, beta, bn_param)
+    out = v_output.reshape(N, W, H, C).transpose(0, 3, 2, 1)
+    cache = v_cache
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -761,8 +807,14 @@ def spatial_batchnorm_backward(dout, cache):
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    
+    N, C, H, W = dout.shape
+    dx_hot, dgamma_hot, dbeta_hot = batchnorm_backward(dout.transpose(0, 3, 2, 1).reshape(N*H*W, C), cache)
+    dx = dx_hot.reshape(N, W, H, C).transpose(0, 3, 2, 1)
+    dgamma = dgamma_hot
+    dbeta = dbeta_hot
 
-    pass
+    return dx, dgamma, dbeta
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
